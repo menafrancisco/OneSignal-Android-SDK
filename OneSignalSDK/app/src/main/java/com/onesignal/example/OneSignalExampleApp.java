@@ -60,8 +60,7 @@ public class OneSignalExampleApp extends Application {
       OneSignal.setLogLevel(OneSignal.LOG_LEVEL.VERBOSE, OneSignal.LOG_LEVEL.NONE);
 
       String currentAppId = getOneSignalAppId(this);
-      if (currentAppId == null)
-         setOneSignalAppId(this, "0ba9731b-33bd-43f4-8b59-61172e27447d");
+      setOneSignalAppId(this, "77e32082-ea27-42e3-a898-c72e141824ef");
 
       OneSignal.init(
          this,
@@ -71,6 +70,7 @@ public class OneSignalExampleApp extends Application {
          new ExampleNotificationReceivedHandler()
       );
 
+      OneSignal.pauseInAppMessages(true);
       OneSignal.sendTag("test1", "test1");
    }
 
