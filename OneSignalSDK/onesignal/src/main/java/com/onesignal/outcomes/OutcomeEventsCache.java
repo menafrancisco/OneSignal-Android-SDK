@@ -1,12 +1,18 @@
-package com.onesignal;
+package com.onesignal.outcomes;
 
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.support.annotation.WorkerThread;
 
-import com.onesignal.OneSignalDbContract.OutcomeEventsTable;
-import com.onesignal.OneSignalDbContract.CachedUniqueOutcomeNotificationTable;
+import com.onesignal.CachedUniqueOutcomeNotification;
+import com.onesignal.OSLogger;
+import com.onesignal.OSSessionManager;
+import com.onesignal.OneSignal;
+import com.onesignal.OneSignalDb;
+import com.onesignal.outcomes.model.OutcomeEventParams;
+import com.onesignal.outcomes.model.OutcomeSource;
+import com.onesignal.outcomes.model.OutcomeSourceBody;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -16,11 +22,19 @@ import java.util.List;
 
 class OutcomeEventsCache {
 
+    private OSLogger logger;
+    private OneSignalDb dbHelper;
+
+    OutcomeEventsCache(OSLogger logger, OneSignalDb dbHelper) {
+        this.logger = logger;
+        this.dbHelper = dbHelper;
+    }
+
     /**
      * Delete event from the DB
      */
     @WorkerThread
-    synchronized static void deleteOldOutcomeEvent(OutcomeEvent event, OneSignalDbHelper dbHelper) {
+    synchronized void deleteOldOutcomeEvent(OutcomeEventParams event) {
         SQLiteDatabase writableDb = dbHelper.getWritableDbWithRetries();
 
         try {
@@ -29,13 +43,13 @@ class OutcomeEventsCache {
                     OutcomeEventsTable.COLUMN_NAME_TIMESTAMP + " = ?", new String[]{String.valueOf(event.getTimestamp())});
             writableDb.setTransactionSuccessful();
         } catch (Throwable t) {
-            OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Error deleting old outcome event records! ", t);
+            logger.log(OneSignal.LOG_LEVEL.ERROR, "Error deleting old outcome event records! ", t);
         } finally {
             if (writableDb != null) {
                 try {
                     writableDb.endTransaction(); // May throw if transaction was never opened or DB is full.
                 } catch (Throwable t) {
-                    OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Error closing transaction! ", t);
+                    logger.log(OneSignal.LOG_LEVEL.ERROR, "Error closing transaction! ", t);
                 }
             }
         }
@@ -47,16 +61,28 @@ class OutcomeEventsCache {
      * For offline mode and contingency of errors
      */
     @WorkerThread
-    synchronized static void saveOutcomeEvent(OutcomeEvent event, OneSignalDbHelper dbHelper) {
+    synchronized void saveOutcomeEvent(OutcomeEventParams eventParams) {
         SQLiteDatabase writableDb = dbHelper.getWritableDbWithRetries();
-        String notificationIds = event.getNotificationIds() != null ? event.getNotificationIds().toString() : "[]";
+        String notificationIds = "[]";
+        OSSessionManager.Session session = OSSessionManager.Session.UNATTRIBUTED;
+
+        if (eventParams.getOutcomeSource() != null) {
+            OutcomeSource source = eventParams.getOutcomeSource();
+            if (source.getDirectBody() != null) {
+                session = OSSessionManager.Session.DIRECT;
+                notificationIds = source.getDirectBody().getNotificationIds().toString();
+            } else if (source.getIndirectBody() != null) {
+                session = OSSessionManager.Session.INDIRECT;
+                notificationIds = source.getIndirectBody().getNotificationIds().toString();
+            }
+        }
 
         ContentValues values = new ContentValues();
         values.put(OutcomeEventsTable.COLUMN_NAME_NOTIFICATION_IDS, notificationIds);
-        values.put(OutcomeEventsTable.COLUMN_NAME_SESSION, event.getSession().toString().toLowerCase());
-        values.put(OutcomeEventsTable.COLUMN_NAME_NAME, event.getName());
-        values.put(OutcomeEventsTable.COLUMN_NAME_TIMESTAMP, event.getTimestamp());
-        values.put(OutcomeEventsTable.COLUMN_NAME_WEIGHT, event.getWeight());
+        values.put(OutcomeEventsTable.COLUMN_NAME_SESSION, session.toString().toLowerCase());
+        values.put(OutcomeEventsTable.COLUMN_NAME_NAME, eventParams.getOutcomeId());
+        values.put(OutcomeEventsTable.COLUMN_NAME_TIMESTAMP, eventParams.getTimestamp());
+        values.put(OutcomeEventsTable.COLUMN_NAME_WEIGHT, eventParams.getWeight());
 
         writableDb.insert(OutcomeEventsTable.TABLE_NAME, null, values);
         writableDb.close();
@@ -68,8 +94,8 @@ class OutcomeEventsCache {
      * For offline mode and contingency of errors
      */
     @WorkerThread
-    synchronized static List<OutcomeEvent> getAllEventsToSend(OneSignalDbHelper dbHelper) {
-        List<OutcomeEvent> events = new ArrayList<>();
+    synchronized List<OutcomeEventParams> getAllEventsToSend() {
+        List<OutcomeEventParams> events = new ArrayList<>();
         Cursor cursor = null;
 
         try {
@@ -94,11 +120,28 @@ class OutcomeEventsCache {
                     float weight = cursor.getFloat(cursor.getColumnIndex(OutcomeEventsTable.COLUMN_NAME_WEIGHT));
 
                     try {
-                        OutcomeEvent event = new OutcomeEvent(session, new JSONArray(notificationIds), name, timestamp, weight);
-                        events.add(event);
+                        OutcomeSourceBody sourceBody = new OutcomeSourceBody();
+                        sourceBody.setNotificationIds(new JSONArray(notificationIds));
+                        OutcomeSource source = null;
+                        switch (session) {
+                            case DIRECT:
+                                source = new OutcomeSource(sourceBody, null);
+                                break;
+                            case DISABLED:
+                                // We should not save disable
+                                break;
+                            case INDIRECT:
+                                source = new OutcomeSource(null, sourceBody);
+                                break;
+                            case UNATTRIBUTED:
+                                // Keep source as null, no source mean unattributed
+                                break;
+                        }
 
+                        OutcomeEventParams eventParams = new OutcomeEventParams(name, source, weight, timestamp);
+                        events.add(eventParams);
                     } catch (JSONException e) {
-                        OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Generating JSONArray from notifications ids outcome:JSON Failed.", e);
+                        logger.log(OneSignal.LOG_LEVEL.ERROR, "Generating JSONArray from notifications ids outcome:JSON Failed.", e);
                     }
                 } while (cursor.moveToNext());
             }
@@ -114,7 +157,7 @@ class OutcomeEventsCache {
      * Save a JSONArray of notification ids as separate items with the unique outcome name
      */
     @WorkerThread
-    synchronized static void saveUniqueOutcomeNotifications(JSONArray notificationIds, String outcomeName, OneSignalDbHelper dbHelper) {
+    synchronized void saveUniqueOutcomeNotifications(JSONArray notificationIds, String outcomeName) {
         if (notificationIds == null)
             return;
 
@@ -140,7 +183,7 @@ class OutcomeEventsCache {
      * Create a JSONArray of not cached notification ids from the unique outcome notifications SQL table
      */
     @WorkerThread
-    synchronized static JSONArray getNotCachedUniqueOutcomeNotifications(String name, JSONArray notificationIds, OneSignalDbHelper dbHelper) {
+    synchronized JSONArray getNotCachedUniqueOutcomeNotifications(String name, JSONArray notificationIds) {
         JSONArray uniqueNotificationIds = new JSONArray();
 
         SQLiteDatabase readableDb = dbHelper.getReadableDbWithRetries();
@@ -153,13 +196,13 @@ class OutcomeEventsCache {
 
                 String[] columns = new String[]{};
 
-                String where = CachedUniqueOutcomeNotificationTable.COLUMN_NAME_NOTIFICATION_ID +  " = ? AND " +
-                        CachedUniqueOutcomeNotificationTable.COLUMN_NAME_NAME +  " = ?";
+                String where = CachedUniqueOutcomeNotificationTable.COLUMN_NAME_NOTIFICATION_ID + " = ? AND " +
+                        CachedUniqueOutcomeNotificationTable.COLUMN_NAME_NAME + " = ?";
 
                 String[] args = new String[]{notification.getNotificationId(), notification.getName()};
 
                 cursor = readableDb.query(
-                        OneSignalDbContract.CachedUniqueOutcomeNotificationTable.TABLE_NAME,
+                        CachedUniqueOutcomeNotificationTable.TABLE_NAME,
                         columns,
                         where,
                         args,

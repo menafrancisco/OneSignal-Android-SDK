@@ -4,8 +4,12 @@ import android.os.Process;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
+import com.onesignal.outcomes.OutcomeEventsFactory;
+import com.onesignal.outcomes.model.OutcomeEventParams;
+import com.onesignal.outcomes.model.OutcomeSource;
+import com.onesignal.outcomes.model.OutcomeSourceBody;
+
 import org.json.JSONArray;
-import org.json.JSONException;
 
 import java.util.List;
 import java.util.Set;
@@ -20,20 +24,13 @@ class OutcomeEventsController {
     private Set<String> unattributedUniqueOutcomeEventsSentSet;
 
     @NonNull
-    private final OutcomeEventsRepository outcomeEventsRepository;
+    private final OutcomeEventsFactory outcomeEventsFactory;
     @NonNull
     private final OSSessionManager osSessionManager;
 
-    public OutcomeEventsController(@NonNull OSSessionManager osSessionManager, @NonNull OutcomeEventsRepository outcomeEventsRepository) {
+    public OutcomeEventsController(@NonNull OSSessionManager osSessionManager, @NonNull OutcomeEventsFactory outcomeEventsFactory) {
         this.osSessionManager = osSessionManager;
-        this.outcomeEventsRepository = outcomeEventsRepository;
-
-        initUniqueOutcomeEventsSentSets();
-    }
-
-    OutcomeEventsController(@NonNull OSSessionManager osSessionManager, @NonNull OneSignalDbHelper dbHelper) {
-        this.outcomeEventsRepository = new OutcomeEventsRepository(dbHelper);
-        this.osSessionManager = osSessionManager;
+        this.outcomeEventsFactory = outcomeEventsFactory;
 
         initUniqueOutcomeEventsSentSets();
     }
@@ -70,38 +67,30 @@ class OutcomeEventsController {
             public void run() {
                 Thread.currentThread().setPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
-                List<OutcomeEvent> outcomeEvents = outcomeEventsRepository.getSavedOutcomeEvents();
-                for (OutcomeEvent event : outcomeEvents) {
+                List<OutcomeEventParams> outcomeEvents = outcomeEventsFactory.getRepository().getSavedOutcomeEvents();
+                for (OutcomeEventParams event : outcomeEvents) {
                     sendSavedOutcomeEvent(event);
                 }
             }
         }, OS_SEND_SAVED_OUTCOMES).start();
     }
 
-    private void sendSavedOutcomeEvent(@NonNull final OutcomeEvent event) {
-        OSSessionManager.Session session = event.getSession();
+    private void sendSavedOutcomeEvent(@NonNull final OutcomeEventParams event) {
         int deviceType = new OSUtils().getDeviceType();
         String appId = OneSignal.appId;
 
-        OneSignalRestClient.ResponseHandler responseHandler = new OneSignalRestClient.ResponseHandler() {
+        OneSignalApiResponseHandler responseHandler = new OneSignalApiResponseHandler() {
             @Override
-            void onSuccess(String response) {
-                super.onSuccess(response);
-                outcomeEventsRepository.removeEvent(event);
+            public void onSuccess(String response) {
+                outcomeEventsFactory.getRepository().removeEvent(event);
+            }
+
+            @Override
+            public void onFailure(int statusCode, String response, Throwable throwable) {
             }
         };
 
-        switch (session) {
-            case DIRECT:
-                outcomeEventsRepository.requestMeasureDirectOutcomeEvent(appId, deviceType, event, responseHandler);
-                break;
-            case INDIRECT:
-                outcomeEventsRepository.requestMeasureIndirectOutcomeEvent(appId, deviceType, event, responseHandler);
-                break;
-            case UNATTRIBUTED:
-                outcomeEventsRepository.requestMeasureUnattributedOutcomeEvent(appId, deviceType, event, responseHandler);
-                break;
-        }
+        outcomeEventsFactory.getRepository().requestMeasureOutcomeEvent(appId, deviceType, event, responseHandler);
     }
 
     void sendOutcomeEvent(@NonNull final String name, @Nullable final OneSignal.OutcomeCallback callback) {
@@ -165,13 +154,29 @@ class OutcomeEventsController {
         final long timestampSeconds = System.currentTimeMillis() / 1000;
         final int deviceType = new OSUtils().getDeviceType();
 
-        final OutcomeEvent outcomeEvent = new OutcomeEvent(session, notificationIds, name, timestampSeconds, weight);
+        OutcomeSourceBody sourceBody = new OutcomeSourceBody();
+        sourceBody.setNotificationIds(notificationIds);
+        OutcomeSource source = null;
 
-        OneSignalRestClient.ResponseHandler responseHandler = new OneSignalRestClient.ResponseHandler() {
+        switch (session) {
+            case DIRECT:
+                source = new OutcomeSource(sourceBody, null);
+                break;
+            case INDIRECT:
+                source = new OutcomeSource(null, sourceBody);
+                break;
+            case UNATTRIBUTED:
+                break;
+            case DISABLED:
+                OneSignal.Log(OneSignal.LOG_LEVEL.VERBOSE, "Outcomes for current session are disabled");
+                return; // finish method
+        }
+
+        final OutcomeEventParams eventParams = new OutcomeEventParams(name, source, weight, timestampSeconds);
+
+        OneSignalApiResponseHandler responseHandler = new OneSignalApiResponseHandler() {
             @Override
-            void onSuccess(String response) {
-                super.onSuccess(response);
-
+            public void onSuccess(String response) {
                 if (session.isAttributed())
                     saveAttributedUniqueOutcomeNotifications(notificationIds, name);
                 else
@@ -179,18 +184,16 @@ class OutcomeEventsController {
 
                 // The only case where an actual success has occurred and the OutcomeEvent should be sent back
                 if (callback != null)
-                    callback.onSuccess(outcomeEvent);
+                    callback.onSuccess(eventParams);
             }
 
             @Override
-            void onFailure(int statusCode, String response, Throwable throwable) {
-                super.onFailure(statusCode, response, throwable);
-
+            public void onFailure(int statusCode, String response, Throwable throwable) {
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
                         Thread.currentThread().setPriority(Process.THREAD_PRIORITY_BACKGROUND);
-                        outcomeEventsRepository.saveOutcomeEvent(outcomeEvent);
+                        outcomeEventsFactory.getRepository().saveOutcomeEvent(eventParams);
                     }
                 }, OS_SAVE_OUTCOMES).start();
 
@@ -204,20 +207,7 @@ class OutcomeEventsController {
             }
         };
 
-        switch (session) {
-            case DIRECT:
-                outcomeEventsRepository.requestMeasureDirectOutcomeEvent(appId, deviceType, outcomeEvent, responseHandler);
-                break;
-            case INDIRECT:
-                outcomeEventsRepository.requestMeasureIndirectOutcomeEvent(appId, deviceType, outcomeEvent, responseHandler);
-                break;
-            case UNATTRIBUTED:
-                outcomeEventsRepository.requestMeasureUnattributedOutcomeEvent(appId, deviceType, outcomeEvent, responseHandler);
-                break;
-            case DISABLED:
-                OneSignal.Log(OneSignal.LOG_LEVEL.VERBOSE, "Outcomes for current session are disabled");
-                break;
-        }
+        outcomeEventsFactory.getRepository().requestMeasureOutcomeEvent(appId, deviceType, eventParams, responseHandler);
     }
 
     /**
@@ -228,7 +218,7 @@ class OutcomeEventsController {
             @Override
             public void run() {
                 Thread.currentThread().setPriority(Process.THREAD_PRIORITY_BACKGROUND);
-                outcomeEventsRepository.saveUniqueOutcomeNotifications(notificationIds, name);
+                outcomeEventsFactory.getRepository().saveUniqueOutcomeNotifications(notificationIds, name);
             }
         }, OS_SAVE_UNIQUE_OUTCOME_NOTIFICATIONS).start();
     }
@@ -248,7 +238,7 @@ class OutcomeEventsController {
      * Get the unique notifications that have not been cached/sent before with the current unique outcome name
      */
     private JSONArray getUniqueNotificationIds(String name, JSONArray notificationIds) {
-        JSONArray uniqueNotificationIds = outcomeEventsRepository.getNotCachedUniqueOutcomeNotifications(name, notificationIds);
+        JSONArray uniqueNotificationIds = outcomeEventsFactory.getRepository().getNotCachedUniqueOutcomeNotifications(name, notificationIds);
         if (uniqueNotificationIds.length() == 0)
             return null;
 

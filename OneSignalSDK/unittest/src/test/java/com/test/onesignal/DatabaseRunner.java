@@ -5,7 +5,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
 import com.onesignal.InAppMessagingHelpers;
-import com.onesignal.OneSignalDbHelper;
+import com.onesignal.MockOneSignalDBHelper;
 import com.onesignal.OneSignalPackagePrivateHelper;
 import com.onesignal.OneSignalPackagePrivateHelper.CachedUniqueOutcomeNotification;
 import com.onesignal.OneSignalPackagePrivateHelper.CachedUniqueOutcomeNotificationTable;
@@ -14,9 +14,9 @@ import com.onesignal.OneSignalPackagePrivateHelper.NotificationTable;
 import com.onesignal.OneSignalPackagePrivateHelper.OSSessionManager;
 import com.onesignal.OneSignalPackagePrivateHelper.OSTestInAppMessage;
 import com.onesignal.OneSignalPackagePrivateHelper.OutcomeEventsTable;
-import com.onesignal.OutcomeEvent;
 import com.onesignal.ShadowOneSignalDbHelper;
 import com.onesignal.StaticResetHelper;
+import com.onesignal.outcomes.model.OutcomeEvent;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -52,6 +52,9 @@ import static junit.framework.Assert.assertTrue;
 
 @RunWith(RobolectricTestRunner.class)
 public class DatabaseRunner {
+
+   private MockOneSignalDBHelper dbHelper;
+
    @BeforeClass // Runs only once, before any tests
    public static void setUpClass() throws Exception {
       ShadowLog.stream = System.out;
@@ -62,6 +65,8 @@ public class DatabaseRunner {
    @Before
    public void beforeEachTest() throws Exception {
       TestHelpers.beforeTestInitAndCleanup();
+
+      dbHelper = new MockOneSignalDBHelper(RuntimeEnvironment.application);
    }
 
    @After
@@ -78,7 +83,7 @@ public class DatabaseRunner {
    public void shouldUpgradeDbFromV2ToV3() {
       // 1. Init DB as version 2 and add one notification record
       ShadowOneSignalDbHelper.DATABASE_VERSION = 2;
-      SQLiteDatabase writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      SQLiteDatabase writableDatabase = dbHelper.getWritableDatabase();
       writableDatabase.beginTransaction();
       ContentValues values = new ContentValues();
       values.put(NotificationTable.COLUMN_NAME_ANDROID_NOTIFICATION_ID, 1);
@@ -92,7 +97,7 @@ public class DatabaseRunner {
       ShadowOneSignalDbHelper.ignoreDuplicatedFieldsOnUpgrade = true;
 
       // 3. Opening the DB will auto trigger the update.
-      HashMap<String, Object> notif = getAllNotificationRecords().get(0);
+      HashMap<String, Object> notif = getAllNotificationRecords(dbHelper).get(0);
 
       long createdTime = (Long)notif.get(NotificationTable.COLUMN_NAME_CREATED_TIME);
       long expireTime = (Long)notif.get(NotificationTable.COLUMN_NAME_EXPIRE_TIME);
@@ -103,7 +108,7 @@ public class DatabaseRunner {
    public void shouldUpgradeDbFromV3ToV4() throws Exception {
       // 1. Init DB as version 3
       ShadowOneSignalDbHelper.DATABASE_VERSION = 3;
-      SQLiteDatabase readableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getReadableDatabase();
+      SQLiteDatabase readableDatabase = dbHelper.getReadableDatabase();
 
       Cursor cursor = readableDatabase.rawQuery("SELECT name FROM sqlite_master WHERE type ='table' AND name='" + OutcomeEventsTable.TABLE_NAME + "'", null);
 
@@ -130,16 +135,16 @@ public class DatabaseRunner {
       ShadowOneSignalDbHelper.ignoreDuplicatedFieldsOnUpgrade = true;
 
       // 4. Opening the DB will auto trigger the update.
-      List<OutcomeEvent> events = getAllOutcomesRecords();
+      List<OutcomeEvent> events = getAllOutcomesRecords(dbHelper);
 
       assertEquals(events.size(), 0);
 
-      SQLiteDatabase writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      SQLiteDatabase writableDatabase = dbHelper.getWritableDatabase();
       // 5. Table now must exist
       writableDatabase.insert(OutcomeEventsTable.TABLE_NAME, null, values);
       writableDatabase.close();
 
-      List<OutcomeEvent> outcomeEvents = getAllOutcomesRecords();
+      List<OutcomeEvent> outcomeEvents = getAllOutcomesRecords(dbHelper);
 
       assertEquals(outcomeEvents.size(), 1);
    }
@@ -159,7 +164,7 @@ public class DatabaseRunner {
    public void shouldUpgradeDbFromV4ToV5() {
       // 1. Init DB as version 4
       ShadowOneSignalDbHelper.DATABASE_VERSION = 4;
-      SQLiteDatabase writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      SQLiteDatabase writableDatabase = dbHelper.getWritableDatabase();
       writableDatabase.execSQL(SQL_CREATE_OUTCOME_REVISION1_ENTRIES);
 
       Cursor cursor = writableDatabase.rawQuery("SELECT name FROM sqlite_master WHERE type ='table' AND name='" + CachedUniqueOutcomeNotificationTable.TABLE_NAME + "'", null);
@@ -184,16 +189,16 @@ public class DatabaseRunner {
       ShadowOneSignalDbHelper.ignoreDuplicatedFieldsOnUpgrade = true;
 
       // 4. Opening the DB will auto trigger the update.
-      List<CachedUniqueOutcomeNotification> notifications = getAllUniqueOutcomeNotificationRecords();
+      List<CachedUniqueOutcomeNotification> notifications = getAllUniqueOutcomeNotificationRecords(dbHelper);
 
       assertEquals(notifications.size(), 0);
 
-      writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      writableDatabase = dbHelper.getWritableDatabase();
       // 5. Table now must exist
       writableDatabase.insert(CachedUniqueOutcomeNotificationTable.TABLE_NAME, null, values);
       writableDatabase.close();
 
-      List<CachedUniqueOutcomeNotification> uniqueOutcomeNotifications = getAllUniqueOutcomeNotificationRecords();
+      List<CachedUniqueOutcomeNotification> uniqueOutcomeNotifications = getAllUniqueOutcomeNotificationRecords(dbHelper);
 
       assertEquals(uniqueOutcomeNotifications.size(), 1);
    }
@@ -202,7 +207,7 @@ public class DatabaseRunner {
    public void shouldUpgradeDbFromV5ToV6() {
       // 1. Init outcome table as version 5
       ShadowOneSignalDbHelper.DATABASE_VERSION = 5;
-      SQLiteDatabase writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      SQLiteDatabase writableDatabase = dbHelper.getWritableDatabase();
 
       // Create table with the schema we had in DB v4
       writableDatabase.execSQL(SQL_CREATE_OUTCOME_REVISION1_ENTRIES);
@@ -216,7 +221,7 @@ public class DatabaseRunner {
 
       // 2. restSetStaticFields so the db reloads and upgrade is done to version 6
       ShadowOneSignalDbHelper.restSetStaticFields();
-      writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      writableDatabase = dbHelper.getWritableDatabase();
 
       // 3. Ensure the upgrade kept our existing record
       Cursor cursor = writableDatabase.query(
@@ -249,7 +254,7 @@ public class DatabaseRunner {
    public void shouldUpgradeDbFromV6ToV7() throws JSONException {
       // 1. Init DB as version 6
       ShadowOneSignalDbHelper.DATABASE_VERSION = 6;
-      SQLiteDatabase writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      SQLiteDatabase writableDatabase = dbHelper.getWritableDatabase();
       writableDatabase.execSQL(SQL_CREATE_OUTCOME_REVISION1_ENTRIES);
 
       Cursor cursor = writableDatabase.rawQuery("SELECT name FROM sqlite_master WHERE type ='table' AND name='" + InAppMessageTable.TABLE_NAME + "'", null);
@@ -272,7 +277,7 @@ public class DatabaseRunner {
               null);
 
       inAppMessage.setDisplayedInSession(true);
-      
+
       ContentValues values = new ContentValues();
       values.put(InAppMessageTable.COLUMN_NAME_MESSAGE_ID, inAppMessage.messageId);
       values.put(InAppMessageTable.COLUMN_NAME_DISPLAY_QUANTITY, inAppMessage.getDisplayStats().getDisplayQuantity());
@@ -285,16 +290,16 @@ public class DatabaseRunner {
       ShadowOneSignalDbHelper.ignoreDuplicatedFieldsOnUpgrade = true;
 
       // 4. Opening the DB will auto trigger the update.
-      List<OSTestInAppMessage> savedInAppMessages = TestHelpers.getAllInAppMessages();
+      List<OSTestInAppMessage> savedInAppMessages = TestHelpers.getAllInAppMessages(dbHelper);
 
       assertEquals(savedInAppMessages.size(), 0);
 
-      writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+      writableDatabase = dbHelper.getWritableDatabase();
       // 5. Table now must exist
       writableDatabase.insert(InAppMessageTable.TABLE_NAME, null, values);
       writableDatabase.close();
 
-      List<OSTestInAppMessage> savedInAppMessagesAfterCreation = TestHelpers.getAllInAppMessages();
+      List<OSTestInAppMessage> savedInAppMessagesAfterCreation = TestHelpers.getAllInAppMessages(dbHelper);
 
       assertEquals(savedInAppMessagesAfterCreation.size(), 1);
       OSTestInAppMessage savedInAppMessage = savedInAppMessagesAfterCreation.get(0);

@@ -41,7 +41,7 @@ import android.location.Location;
 import android.net.ConnectivityManager;
 import android.os.Bundle;
 
-import com.onesignal.BuildConfig;
+import com.onesignal.MockOneSignalDBHelper;
 import com.onesignal.MockOutcomesUtils;
 import com.onesignal.OSEmailSubscriptionObserver;
 import com.onesignal.OSEmailSubscriptionState;
@@ -57,7 +57,6 @@ import com.onesignal.OSSubscriptionObserver;
 import com.onesignal.OSSubscriptionStateChanges;
 import com.onesignal.OneSignal;
 import com.onesignal.OneSignal.ChangeTagsUpdateHandler;
-import com.onesignal.OneSignalDbHelper;
 import com.onesignal.OneSignalPackagePrivateHelper;
 import com.onesignal.OneSignalShadowPackageManager;
 import com.onesignal.PermissionsActivity;
@@ -77,7 +76,6 @@ import com.onesignal.ShadowOSUtils;
 import com.onesignal.ShadowOneSignal;
 import com.onesignal.ShadowOneSignalRestClient;
 import com.onesignal.ShadowPushRegistratorGCM;
-import com.onesignal.ShadowReceiveReceiptController;
 import com.onesignal.ShadowRoboNotificationManager;
 import com.onesignal.StaticResetHelper;
 import com.onesignal.SyncJobService;
@@ -89,7 +87,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -141,7 +138,6 @@ import static junit.framework.Assert.assertNotNull;
 import static junit.framework.Assert.assertNull;
 import static junit.framework.Assert.assertTrue;
 import static org.hamcrest.CoreMatchers.not;
-import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThat;
 import static org.robolectric.Shadows.shadowOf;
@@ -176,6 +172,7 @@ public class MainOneSignalClassRunner {
    private static JSONObject lastGetTags;
    private static ActivityController<BlankActivity> blankActivityController;
    private MockOutcomesUtils notificationData;
+   private MockOneSignalDBHelper dbHelper;
 
    private static void GetIdsAvailable() {
       OneSignal.idsAvailable(new OneSignal.IdsAvailableHandler() {
@@ -232,6 +229,7 @@ public class MainOneSignalClassRunner {
       blankActivityController = Robolectric.buildActivity(BlankActivity.class).create();
       blankActivity = blankActivityController.get();
       notificationData = new MockOutcomesUtils();
+      dbHelper = new MockOneSignalDBHelper(RuntimeEnvironment.application);
 
       cleanUp();
    }
@@ -3278,7 +3276,7 @@ public class MainOneSignalClassRunner {
       assertEquals(0, ShadowRoboNotificationManager.notifications.size());
 
       // Make sure they are marked dismissed.
-      SQLiteDatabase readableDb = OneSignalDbHelper.getInstance(blankActivity).getReadableDatabase();
+      SQLiteDatabase readableDb = dbHelper.getReadableDatabase();
       Cursor cursor = readableDb.query(OneSignalPackagePrivateHelper.NotificationTable.TABLE_NAME, new String[] { "created_time" },
           OneSignalPackagePrivateHelper.NotificationTable.COLUMN_NAME_DISMISSED + " = 1", null, null, null, null);
       assertEquals(2, cursor.getCount());

@@ -1,20 +1,20 @@
 package com.onesignal;
 
-class CachedUniqueOutcomeNotification {
+public class CachedUniqueOutcomeNotification {
 
     private String notificationId;
     private String name;
 
-    CachedUniqueOutcomeNotification(String notificationId, String name) {
+    public CachedUniqueOutcomeNotification(String notificationId, String name) {
         this.notificationId = notificationId;
         this.name = name;
     }
 
-    String getNotificationId() {
+    public String getNotificationId() {
         return notificationId;
     }
 
-    String getName() {
+    public String getName() {
         return name;
     }
 

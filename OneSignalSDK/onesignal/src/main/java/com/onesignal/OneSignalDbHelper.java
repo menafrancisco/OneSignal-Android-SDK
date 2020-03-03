@@ -42,7 +42,7 @@ import com.onesignal.OneSignalDbContract.InAppMessageTable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class OneSignalDbHelper extends SQLiteOpenHelper {
+class OneSignalDbHelper extends SQLiteOpenHelper implements OneSignalDb {
    static final int DATABASE_VERSION = 7;
    private static final String DATABASE_NAME = "OneSignal.db";
 
@@ -129,7 +129,7 @@ public class OneSignalDbHelper extends SQLiteOpenHelper {
 
    // Retry in-case of rare device issues with opening database.
    // https://github.com/OneSignal/OneSignal-Android-SDK/issues/136
-   synchronized SQLiteDatabase getWritableDbWithRetries() {
+   public synchronized SQLiteDatabase getWritableDbWithRetries() {
       int count = 0;
       while(true) {
          try {
@@ -142,7 +142,7 @@ public class OneSignalDbHelper extends SQLiteOpenHelper {
       }
    }
 
-   synchronized SQLiteDatabase getReadableDbWithRetries() {
+   public synchronized SQLiteDatabase getReadableDbWithRetries() {
       int count = 0;
       while(true) {
          try {

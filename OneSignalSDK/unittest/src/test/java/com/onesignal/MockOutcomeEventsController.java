@@ -5,8 +5,8 @@ import android.support.annotation.Nullable;
 
 public class MockOutcomeEventsController extends OutcomeEventsController {
 
-    public MockOutcomeEventsController(MockSessionManager sessionManager, MockOutcomeEventsRepository repository) {
-        super(sessionManager, repository);
+    public MockOutcomeEventsController(MockSessionManager sessionManager, MockOutcomeEventsFactory factory) {
+        super(sessionManager, factory);
     }
 
     @Override

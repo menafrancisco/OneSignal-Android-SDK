@@ -46,6 +46,8 @@ import android.support.annotation.WorkerThread;
 import android.util.Log;
 
 import com.onesignal.OneSignalDbContract.NotificationTable;
+import com.onesignal.outcomes.OutcomeEventsFactory;
+import com.onesignal.outcomes.model.OutcomeEventParams;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -428,8 +430,11 @@ public class OneSignal {
          }
       };
    }
+   private static OSLogger logger = new OSLogWrapper();
+   private static OneSignalAPIClient apiClient = new OneSignalRestClientWrapper();
    @Nullable private static OSSessionManager sessionManager;
    @Nullable private static OutcomeEventsController outcomeEventsController;
+   @Nullable private static OutcomeEventsFactory outcomeEventsFactory;
 
    private static AdvertisingIdentifierProvider mainAdIdProvider = new AdvertisingIdProviderGPS();
 
@@ -595,8 +600,11 @@ public class OneSignal {
 
 
       if (wasAppContextNull) {
+         if (outcomeEventsFactory == null)
+            outcomeEventsFactory = new OutcomeEventsFactory(logger, apiClient, getDBHelperInstance());
+
          sessionManager = new OSSessionManager(getNewSessionListener());
-         outcomeEventsController = new OutcomeEventsController(sessionManager, getDBHelperInstance());
+         outcomeEventsController = new OutcomeEventsController(sessionManager, outcomeEventsFactory);
          // Prefs require a context to save
          // If the previous state of appContext was null, kick off write in-case it was waiting
          OneSignalPrefs.startDelayedWrite();
@@ -3166,12 +3174,12 @@ public class OneSignal {
 
    /**
     * OutcomeEvent will be null in cases where the request was not sent:
-    *    1. OutcomeEvent cached already for re-attempt in future
-    *    2. Unique OutcomeEvent already sent for ATTRIBUTED session and notification(s)
-    *    3. Unique OutcomeEvent already sent for UNATTRIBUTED session during session
+    *    1. OutcomeEventParams cached already for re-attempt in future
+    *    2. Unique OutcomeEventParams already sent for ATTRIBUTED session and notification(s)
+    *    3. Unique OutcomeEventParams already sent for UNATTRIBUTED session during session
     */
    public interface OutcomeCallback {
-      void onSuccess(@Nullable OutcomeEvent outcomeEvent);
+      void onSuccess(@Nullable OutcomeEventParams outcomeEvent);
    }
    /*
     * End OneSignalOutcome module

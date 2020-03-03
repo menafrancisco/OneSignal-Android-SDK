@@ -16,7 +16,7 @@ import org.json.JSONObject;
  * - Unattributed: the session was not influenced nor was on the time frame os a push
  */
 
-class OSSessionManager {
+public class OSSessionManager {
 
     private static final String DIRECT_TAG = "direct";
 

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.os.Bundle;
 
+import com.onesignal.MockOneSignalDBHelper;
 import com.onesignal.MockOutcomesUtils;
 import com.onesignal.OSNotificationOpenResult;
 import com.onesignal.OneSignal;
@@ -29,6 +30,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLog;
@@ -80,6 +82,8 @@ public class OutcomeEventIntegrationTests {
     private static ActivityController<BlankActivity> blankActivityController;
     private static String notificationOpenedMessage;
 
+    private MockOneSignalDBHelper dbHelper;
+
     private static OneSignal.NotificationOpenedHandler getNotificationOpenedHandler() {
         return new OneSignal.NotificationOpenedHandler() {
             @Override
@@ -109,6 +113,7 @@ public class OutcomeEventIntegrationTests {
     public void beforeEachTest() throws Exception {
         blankActivityController = Robolectric.buildActivity(BlankActivity.class).create();
         blankActivity = blankActivityController.get();
+        dbHelper = new MockOneSignalDBHelper(RuntimeEnvironment.application);
 
         cleanUp();
     }
@@ -647,8 +652,8 @@ public class OutcomeEventIntegrationTests {
     public void testCleaningCachedNotifications_after7Days_willAlsoCleanUniqueOutcomeNotifications() throws Exception {
         foregroundAppAfterReceivingNotification();
 
-        assertEquals(1, getAllNotificationRecords().size());
-        assertEquals(0, getAllUniqueOutcomeNotificationRecords().size());
+        assertEquals(1, getAllNotificationRecords(dbHelper).size());
+        assertEquals(0, getAllUniqueOutcomeNotificationRecords(dbHelper).size());
 
         // Should add a new unique outcome notifications (total in cache = 0 + 1)
         OneSignal.sendUniqueOutcome("unique_1");
@@ -658,8 +663,8 @@ public class OutcomeEventIntegrationTests {
         OneSignal.sendUniqueOutcome("unique_1");
         threadAndTaskWait();
 
-        assertEquals(1, getAllNotificationRecords().size());
-        assertEquals(1, getAllUniqueOutcomeNotificationRecords().size());
+        assertEquals(1, getAllNotificationRecords(dbHelper).size());
+        assertEquals(1, getAllUniqueOutcomeNotificationRecords(dbHelper).size());
 
         // Background app
         blankActivityController.pause();
@@ -685,8 +690,8 @@ public class OutcomeEventIntegrationTests {
         threadAndTaskWait();
 
         // Make sure only 2 notifications exist still, but 5 unique outcome notifications exist
-        assertEquals(2, getAllNotificationRecords().size());
-        assertEquals(5, getAllUniqueOutcomeNotificationRecords().size());
+        assertEquals(2, getAllNotificationRecords(dbHelper).size());
+        assertEquals(5, getAllUniqueOutcomeNotificationRecords(dbHelper).size());
 
         // Wait a week to clear cached notifications
         advanceSystemTimeBy(604_800);
@@ -697,8 +702,8 @@ public class OutcomeEventIntegrationTests {
         threadAndTaskWait();
 
         // Make sure when notification cache is cleaned so is the unique outcome events cache
-        assertEquals(0, getAllNotificationRecords().size());
-        assertEquals(0, getAllUniqueOutcomeNotificationRecords().size());
+        assertEquals(0, getAllNotificationRecords(dbHelper).size());
+        assertEquals(0, getAllUniqueOutcomeNotificationRecords(dbHelper).size());
     }
 
     private void foregroundAppAfterClickingNotification() throws Exception {

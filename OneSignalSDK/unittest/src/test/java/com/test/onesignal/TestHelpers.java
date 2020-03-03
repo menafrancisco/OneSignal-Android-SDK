@@ -11,14 +11,14 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.support.annotation.Nullable;
 
-import com.onesignal.OneSignalDbHelper;
+import com.onesignal.MockOneSignalDBHelper;
+import com.onesignal.OneSignalDb;
 import com.onesignal.OneSignalPackagePrivateHelper;
 import com.onesignal.OneSignalPackagePrivateHelper.CachedUniqueOutcomeNotification;
 import com.onesignal.OneSignalPackagePrivateHelper.OSSessionManager;
 import com.onesignal.OneSignalPackagePrivateHelper.OSTestInAppMessage;
 import com.onesignal.OneSignalPackagePrivateHelper.OneSignalPrefs;
 import com.onesignal.OneSignalShadowPackageManager;
-import com.onesignal.OutcomeEvent;
 import com.onesignal.ShadowCustomTabsClient;
 import com.onesignal.ShadowDynamicTimer;
 import com.onesignal.ShadowFirebaseAnalytics;
@@ -33,6 +33,7 @@ import com.onesignal.ShadowOneSignalRestClient;
 import com.onesignal.ShadowOneSignalRestClientWithMockConnection;
 import com.onesignal.ShadowPushRegistratorGCM;
 import com.onesignal.StaticResetHelper;
+import com.onesignal.outcomes.model.OutcomeEvent;
 
 import junit.framework.Assert;
 
@@ -109,7 +110,7 @@ public class TestHelpers {
       if (lastException != null)
          throw lastException;
 
-      OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getReadableDatabase().close();
+      new MockOneSignalDBHelper(RuntimeEnvironment.application).getReadableDatabase().close();
    }
 
    static void stopAllOSThreads() {
@@ -233,8 +234,8 @@ public class TestHelpers {
       advanceSystemTimeBy(31);
    }
 
-   static ArrayList<HashMap<String, Object>> getAllNotificationRecords() {
-      SQLiteDatabase readableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getReadableDatabase();
+   static ArrayList<HashMap<String, Object>> getAllNotificationRecords(OneSignalDb db) {
+      SQLiteDatabase readableDatabase = db.getReadableDbWithRetries();
       Cursor cursor = readableDatabase.query(
          OneSignalPackagePrivateHelper.NotificationTable.TABLE_NAME,
          null,
@@ -268,8 +269,8 @@ public class TestHelpers {
       return mapList;
    }
 
-   static List<OutcomeEvent>  getAllOutcomesRecords() {
-      SQLiteDatabase readableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getReadableDatabase();
+   static List<OutcomeEvent>  getAllOutcomesRecords(OneSignalDb db) {
+      SQLiteDatabase readableDatabase = db.getReadableDbWithRetries();
       Cursor cursor = readableDatabase.query(
               OneSignalPackagePrivateHelper.OutcomeEventsTable.TABLE_NAME,
               null,
@@ -307,8 +308,8 @@ public class TestHelpers {
       return events;
    }
 
-   static ArrayList<CachedUniqueOutcomeNotification> getAllUniqueOutcomeNotificationRecords() {
-      SQLiteDatabase readableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getReadableDatabase();
+   static ArrayList<CachedUniqueOutcomeNotification> getAllUniqueOutcomeNotificationRecords(OneSignalDb db) {
+      SQLiteDatabase readableDatabase = db.getReadableDbWithRetries();
       Cursor cursor = readableDatabase.query(
               OneSignalPackagePrivateHelper.CachedUniqueOutcomeNotificationTable.TABLE_NAME,
               null,
@@ -338,8 +339,8 @@ public class TestHelpers {
       return notifications;
    }
 
-   synchronized static void saveIAM(OSTestInAppMessage inAppMessage) {
-      SQLiteDatabase writableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getWritableDatabase();
+   synchronized static void saveIAM(OSTestInAppMessage inAppMessage, OneSignalDb db) {
+      SQLiteDatabase writableDatabase = db.getWritableDbWithRetries();
 
       ContentValues values = new ContentValues();
       values.put(OneSignalPackagePrivateHelper.InAppMessageTable.COLUMN_NAME_MESSAGE_ID, inAppMessage.messageId);
@@ -352,8 +353,8 @@ public class TestHelpers {
       writableDatabase.close();
    }
 
-   synchronized static List<OSTestInAppMessage> getAllInAppMessages() throws JSONException {
-      SQLiteDatabase readableDatabase = OneSignalDbHelper.getInstance(RuntimeEnvironment.application).getReadableDatabase();
+   synchronized static List<OSTestInAppMessage> getAllInAppMessages(OneSignalDb db) throws JSONException {
+      SQLiteDatabase readableDatabase = db.getReadableDbWithRetries();
       Cursor cursor = readableDatabase.query(
               OneSignalPackagePrivateHelper.InAppMessageTable.TABLE_NAME,
               null,

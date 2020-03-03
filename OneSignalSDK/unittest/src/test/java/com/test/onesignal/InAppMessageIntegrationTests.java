@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 
 import com.onesignal.InAppMessagingHelpers;
+import com.onesignal.MockOneSignalDBHelper;
 import com.onesignal.OneSignal;
 import com.onesignal.OneSignalPackagePrivateHelper;
 import com.onesignal.OneSignalPackagePrivateHelper.OSInAppMessageController;
@@ -37,6 +38,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLog;
@@ -89,6 +91,8 @@ public class InAppMessageIntegrationTests {
     private static Activity blankActivity;
     private static ActivityController<BlankActivity> blankActivityController;
 
+    private MockOneSignalDBHelper dbHelper;
+
     @BeforeClass
     public static void setupClass() throws Exception {
         ShadowLog.stream = System.out;
@@ -108,6 +112,7 @@ public class InAppMessageIntegrationTests {
 
         blankActivityController = Robolectric.buildActivity(BlankActivity.class).create();
         blankActivity = blankActivityController.get();
+        dbHelper = new MockOneSignalDBHelper(RuntimeEnvironment.application);
 
         TestHelpers.beforeTestInitAndCleanup();
     }
@@ -637,7 +642,7 @@ public class InAppMessageIntegrationTests {
         message.getDisplayStats().setDisplayQuantity(1);
         message.setDisplayedInSession(true);
         // Save IAM on DB
-        TestHelpers.saveIAM(message);
+        TestHelpers.saveIAM(message, dbHelper);
         // Save IAM for dismiss
         OneSignalPrefs.saveStringSet(
                 OneSignalPrefs.PREFS_ONESIGNAL,
@@ -646,7 +651,7 @@ public class InAppMessageIntegrationTests {
         );
 
         // Check IAM was saved correctly
-        List<OSTestInAppMessage> savedInAppMessages = TestHelpers.getAllInAppMessages();
+        List<OSTestInAppMessage> savedInAppMessages = TestHelpers.getAllInAppMessages(dbHelper);
         assertEquals(savedInAppMessages.size(), 1);
         assertTrue(savedInAppMessages.get(0).isDisplayedInSession());
 
@@ -928,13 +933,13 @@ public class InAppMessageIntegrationTests {
         String firstID = inAppMessage.messageId + "_test";
         inAppMessage.messageId = firstID;
         inAppMessage.getDisplayStats().setLastDisplayTime(currentTimeInSeconds - SIX_MONTHS_TIME_SECONDS + 1);
-        TestHelpers.saveIAM(inAppMessage);
+        TestHelpers.saveIAM(inAppMessage, dbHelper);
 
         inAppMessage.getDisplayStats().setLastDisplayTime(currentTimeInSeconds - SIX_MONTHS_TIME_SECONDS - 1);
         inAppMessage.messageId += "1";
-        TestHelpers.saveIAM(inAppMessage);
+        TestHelpers.saveIAM(inAppMessage, dbHelper);
 
-        List<OSTestInAppMessage> savedInAppMessages = TestHelpers.getAllInAppMessages();
+        List<OSTestInAppMessage> savedInAppMessages = TestHelpers.getAllInAppMessages(dbHelper);
 
         assertEquals(2, savedInAppMessages.size());
 
@@ -952,7 +957,7 @@ public class InAppMessageIntegrationTests {
         OneSignalInit();
         threadAndTaskWait();
 
-        List<OSTestInAppMessage> savedInAppMessagesAfterInit = TestHelpers.getAllInAppMessages();
+        List<OSTestInAppMessage> savedInAppMessagesAfterInit = TestHelpers.getAllInAppMessages(dbHelper);
         // Message with old display time should be removed
         assertEquals(1, savedInAppMessagesAfterInit.size());
         assertEquals(firstID, savedInAppMessagesAfterInit.get(0).messageId);

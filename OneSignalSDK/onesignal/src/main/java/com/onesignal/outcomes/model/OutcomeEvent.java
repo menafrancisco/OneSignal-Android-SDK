@@ -1,7 +1,9 @@
-package com.onesignal;
+package com.onesignal.outcomes.model;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+
+import com.onesignal.OSSessionManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -27,6 +29,23 @@ public class OutcomeEvent {
         this.name = name;
         this.timestamp = timestamp;
         this.weight = weight;
+    }
+
+    public static OutcomeEvent fromOutcomeEventParams(OutcomeEventParams outcomeEventParams) {
+        OSSessionManager.Session session = OSSessionManager.Session.UNATTRIBUTED;
+        JSONArray notificationId = null;
+        if (outcomeEventParams.getOutcomeSource() != null) {
+            OutcomeSource source = outcomeEventParams.getOutcomeSource();
+            if (source.getDirectBody() != null) {
+                session = OSSessionManager.Session.DIRECT;
+                notificationId = source.getDirectBody().getNotificationIds();
+            } else if (source.getIndirectBody() != null) {
+                session = OSSessionManager.Session.INDIRECT;
+                notificationId = source.getIndirectBody().getNotificationIds();
+            }
+        }
+
+        return new OutcomeEvent(session, notificationId, outcomeEventParams.getOutcomeId(), outcomeEventParams.getTimestamp(), outcomeEventParams.getWeight());
     }
 
     public OSSessionManager.Session getSession() {
@@ -59,13 +78,13 @@ public class OutcomeEvent {
             json.put(TIMESTAMP, timestamp);
             json.put(WEIGHT, weight);
         } catch (JSONException exception) {
-            OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Generating OutcomeEvent toJSONObject ", exception);
+//            OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Generating OutcomeEvent toJSONObject ", exception);
         }
 
         return json;
     }
 
-    JSONObject toJSONObjectForMeasure() {
+    public JSONObject toJSONObjectForMeasure() {
         JSONObject json = new JSONObject();
 
         try {
@@ -78,7 +97,7 @@ public class OutcomeEvent {
                 json.put(WEIGHT, weight);
 
         } catch (JSONException exception) {
-            OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Generating OutcomeEvent toJSONObject ", exception);
+//            OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Generating OutcomeEvent toJSONObject ", exception);
         }
 
         return json;
