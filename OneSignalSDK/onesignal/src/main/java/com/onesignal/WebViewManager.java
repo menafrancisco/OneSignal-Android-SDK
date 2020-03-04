@@ -392,7 +392,7 @@ class WebViewManager extends ActivityLifecycleHandler.ActivityAvailableListener 
 
                 if (OneSignal.iamV2Tag != null && !OneSignal.iamV2Tag.isEmpty()) {
                     String[] tags = OneSignal.iamV2Tag.split(",");
-                    JSONArray tagsToAdd = new JSONArray();
+                    JSONObject tagsToAdd = new JSONObject();
                     JSONArray tagsToRemove = new JSONArray();
                     for (String tag : tags) {
                         String[] splitTag = tag.split(":");
@@ -402,7 +402,7 @@ class WebViewManager extends ActivityLifecycleHandler.ActivityAvailableListener 
                             if (tagValue.isEmpty())
                                 tagsToRemove.put(tagKey);
                             else
-                                tagsToAdd.put(new JSONObject().put(tagKey, tagValue));
+                                tagsToAdd.put(tagKey, tagValue);
                         } else if (splitTag.length == 1)
                             tagsToRemove.put(tagKey);
                     }
@@ -468,7 +468,7 @@ class WebViewManager extends ActivityLifecycleHandler.ActivityAvailableListener 
         }
     }
     
-    private static String addTagsButtonToHtml(JSONArray adds, JSONArray removes) {
+    private static String addTagsButtonToHtml(JSONObject adds, JSONArray removes) {
         return "<button type=\"button\" id=\"button\" class=\"iam-button iam-clickable\"" +
                 "   data-action-payload='{" +
                 "       \"url_target\":\"browser\"," +
@@ -566,7 +566,8 @@ class WebViewManager extends ActivityLifecycleHandler.ActivityAvailableListener 
 
         private void handleActionTaken(JSONObject jsonObject) throws JSONException {
             JSONObject body = jsonObject.getJSONObject("body");
-            String id = body.optString("id", null);
+            String id = body.optString("id", "FAKE_ID_1234567890");
+            body.put("id", id);
             if (message.isPreview) {
                 OSInAppMessageController.getController().onMessageActionOccurredOnPreview(message, body);
             } else if (id != null) {
